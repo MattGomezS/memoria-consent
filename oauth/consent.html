@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Memoria de Matt — Autorizar</title>
+<style>
+  :root { --bg:#fff; --fg:#111; --muted:#666; --line:#ddd; --accent:#2563eb; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111; --fg:#eee; --muted:#999; --line:#333; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 -apple-system, system-ui, sans-serif; }
+  main { max-width:420px; margin:48px auto; padding:0 16px; }
+  h1 { font-size:22px; margin:0 0 8px; }
+  p { color:var(--muted); }
+  input, button { width:100%; box-sizing:border-box; font:inherit; padding:12px; margin:6px 0; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--fg); }
+  button { cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; border:none; }
+  .err { color:#dc2626; }
+  [hidden] { display:none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Memoria de Matt</h1>
+  <p id="estado">Cargando…</p>
+
+  <form id="login" hidden>
+    <input id="email" type="email" placeholder="Email" autocomplete="username" required>
+    <input id="pass" type="password" placeholder="Contraseña" autocomplete="current-password" required>
+    <button class="primary" type="submit">Entrar</button>
+  </form>
+
+  <div id="consent" hidden>
+    <p><strong id="cliente"></strong> quiere leer tu memoria y crear notas nuevas en <code>_entradas/</code>.</p>
+    <p>Redirige a: <code id="redir"></code></p>
+    <button class="primary" id="aprobar">Aprobar</button>
+    <button id="rechazar">Rechazar</button>
+  </div>
+</main>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm'
+
+// Clave publicable: es pública por diseño; el acceso real lo controla el inicio de sesión
+const sb = createClient('https://whyfsadgwqnqhovvrlrs.supabase.co', 'sb_publishable_qF1fDMVFnECQa5ZgwRqTiw_o2otMJX_')
+const $ = (id) => document.getElementById(id)
+const authId = new URLSearchParams(location.search).get('authorization_id')
+const estado = (t, err = false) => { $('estado').textContent = t; $('estado').className = err ? 'err' : '' }
+
+async function mostrarConsentimiento() {
+  const { data, error } = await sb.auth.oauth.getAuthorizationDetails(authId)
+  if (error || !data) return estado(error?.message || 'Solicitud de autorización inválida.', true)
+  if (!('authorization_id' in data)) return location.replace(data.redirect_url) // ya aprobado antes
+  $('login').hidden = true
+  $('cliente').textContent = data.client?.name || 'Una aplicación'
+  $('redir').textContent = data.redirect_uri
+  $('consent').hidden = false
+  estado('Revisa quién pide acceso antes de aprobar.')
+}
+
+async function decidir(aprobar) {
+  const fn = aprobar ? sb.auth.oauth.approveAuthorization : sb.auth.oauth.denyAuthorization
+  const { data, error } = await fn.call(sb.auth.oauth, authId)
+  if (error) return estado(error.message, true)
+  location.replace(data.redirect_url)
+}
+
+$('aprobar').onclick = () => decidir(true)
+$('rechazar').onclick = () => decidir(false)
+$('login').onsubmit = async (e) => {
+  e.preventDefault()
+  estado('Entrando…')
+  const { error } = await sb.auth.signInWithPassword({ email: $('email').value, password: $('pass').value })
+  if (error) return estado('Email o contraseña incorrectos.', true)
+  mostrarConsentimiento()
+}
+
+if (!authId) {
+  estado('Falta authorization_id. Esta página solo se abre desde Claude o ChatGPT al conectar la memoria.', true)
+} else {
+  const { data: { session } } = await sb.auth.getSession()
+  if (session) mostrarConsentimiento()
+  else { $('login').hidden = false; estado('Entra con tu usuario de matriz-memoria.') }
+}
+</script>
+</body>
+</html>
