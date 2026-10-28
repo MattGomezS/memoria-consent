@@ -1,0 +1,13 @@
+# Evita que el plan gratis de Supabase pause matriz-memoria por inactividad
+name: ping-supabase
+on:
+  schedule:
+    - cron: '0 13 */3 * *'
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -fsS https://whyfsadgwqnqhovvrlrs.supabase.co/rest/v1/ \
+            -H "apikey: sb_publishable_qF1fDMVFnECQa5ZgwRqTiw_o2otMJX_" -o /dev/null -w "%{http_code}\n"
